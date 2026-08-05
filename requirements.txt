@@ -1,16 +1,18 @@
 # ============================================================================
 #  DÉPLOIEMENT (Streamlit Community Cloud) — dépendances LÉGÈRES du dashboard.
-#  Les données (parquet) sont embarquées dans le dépôt, donc pas besoin ici des
-#  libs lourdes de fabrication (osmnx, rasterio, stac, xgboost…).
-#  Pour reconstruire les données en local : pip install -r requirements-full.txt
+#  Contraintes minimales (bornes basses seulement) pour que pip choisisse des
+#  versions récentes avec des « wheels » précompilés → installation fiable,
+#  y compris sur Python 3.13. Les données (parquet) sont embarquées dans le
+#  dépôt : pas besoin ici des libs lourdes (osmnx, rasterio, stac, xgboost…).
+#  Reconstruire les données en local : pip install -r requirements-full.txt
 # ============================================================================
 streamlit>=1.37
-geopandas>=0.14
-shapely>=2.0
-pyarrow>=15.0
-pandas>=2.0
-numpy>=1.26,<2.1
+pandas>=2.1
+numpy>=1.26
 plotly>=5.20
+geopandas>=1.0
+shapely>=2.0
+pyarrow>=15
 folium>=0.17
 streamlit-folium>=0.22
 branca>=0.7
