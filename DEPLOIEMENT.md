@@ -40,7 +40,7 @@ GitHub vous demandera de vous connecter (une fenêtre s'ouvre) — acceptez.
    - **Main file path** : `dashboard/app.py`
 4. Cliquez **Advanced settings** → **Secrets**, et collez :
    ```
-   DJILAND_PASSWORD = "Djiland-Abidjan-2026"
+   DJILAND_PASSWORD = "VOTRE-MOT-DE-PASSE"
    ```
    (changez le mot de passe si vous voulez.)
 5. **Deploy**. Attendez 2–4 min. Vous obtenez un **lien fixe** du type
