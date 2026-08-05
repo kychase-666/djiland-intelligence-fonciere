@@ -17,3 +17,6 @@ models/*.joblib
 # Données du Grand Abidjan : on GARDE les .parquet (nécessaires au cloud)
 !data/grand_abidjan/
 !data/grand_abidjan/*.parquet
+
+# Cache OSM/HTTP local (inutile au dépôt)
+cache/
