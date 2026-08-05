@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.env
+data/raw/*
+data/processed/*
+data/synthetic/*
+models/*.joblib
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+.DS_Store
+*.log
+
+# Secrets — ne JAMAIS committer un vrai mot de passe
+.streamlit/secrets.toml
+
+# Données du Grand Abidjan : on GARDE les .parquet (nécessaires au cloud)
+!data/grand_abidjan/
+!data/grand_abidjan/*.parquet

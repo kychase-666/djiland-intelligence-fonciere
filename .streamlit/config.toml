@@ -1,0 +1,14 @@
+# Thème professionnel épuré — Djiland Land Intelligence
+[theme]
+base = "light"
+primaryColor = "#1F6F5C"                 # émeraude sobre (foncier / croissance)
+backgroundColor = "#FBFBF9"              # blanc cassé chaud
+secondaryBackgroundColor = "#F1F0EB"     # panneaux / cartes
+textColor = "#16241F"                    # vert-anthracite lisible
+font = "sans serif"
+
+[server]
+headless = true
+
+[browser]
+gatherUsageStats = false
