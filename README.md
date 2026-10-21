@@ -42,6 +42,24 @@ docker compose up --build
 
 ---
 
+## 🆕 Nouveautés v3.0 (20/10/2026) — interface « cabinet international »
+
+- **Nouvelle navigation** : barre latérale sombre avec logo Djiland et rubriques
+  (Pilotage · Marché · Investissement · Conformité & terrain · Données & livrables),
+  icônes sobres, menu en tiroir sur téléphone. Une page par module (`dashboard/views/`),
+  socle commun dans `dashboard/core.py` (données, composants, formatage, connexion).
+- **Charte graphique native** (`.streamlit/config.toml`) : Inter + Plus Jakarta Sans,
+  émeraude profond + or, cartes d'indicateurs, graphiques harmonisés.
+- **Vue d'ensemble** : tableau de bord de direction (indicateurs du marché, prix par zone,
+  meilleures opportunités, indice des prix, hausses attendues, grands projets).
+- **Bilan promoteur** : faisabilité d'une opération (villas, immeuble R+2/R+4, lotissement) —
+  chiffre d'affaires, coût de revient, marge, TRI, prix d'équilibre, fonds propres,
+  cascade des coûts, matrice de sensibilité, PDF. Moteur testé : `src/analysis/bilan.py`.
+- **Comparateur de terrains** : jusqu'à 4 parcelles côte à côte + profil radar.
+- **Centre d'alertes** unifié : hausses attendues, chantiers détectés, vallées de
+  rattrapage, alertes juridiques.
+- Écran de connexion et bouton de déconnexion repensés.
+
 ## 🆕 Nouveautés v2.0 (20/10/2026)
 
 - **🎯 Chasseur d'opportunités** : budget + critères (surface, zones, lotissement

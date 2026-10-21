@@ -46,14 +46,14 @@ def fcfa(v, suffixe: str = " F") -> str:
     """Montant formaté « 23 872 234 F » (— si vide)."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return "—"
-    return f"{v:,.0f}".replace(",", " ") + suffixe
+    return f"{v:,.0f}".replace(",", " ") + suffixe
 
 
 def mfcfa(v) -> str:
     """Montant en millions « 23,9 M FCFA »."""
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return "—"
-    return f"{v / 1e6:,.1f}".replace(",", " ").replace(".", ",") + " M FCFA"
+    return f"{v / 1e6:,.1f}".replace(",", " ").replace(".", ",") + " M FCFA"
 
 
 def pct(v, decimales: int = 1, signe: bool = False) -> str:
@@ -61,12 +61,12 @@ def pct(v, decimales: int = 1, signe: bool = False) -> str:
     if v is None or (isinstance(v, float) and np.isnan(v)):
         return "—"
     s = f"{v:+.{decimales}f}" if signe else f"{v:.{decimales}f}"
-    return s.replace(".", ",") + " %"
+    return s.replace(".", ",") + " %"
 
 
 def _sp(v: str) -> str:
     """(Compat) remplace la virgule des milliers par une espace fine."""
-    return v.replace(",", " ")
+    return v.replace(",", " ")
 
 
 # ---------------------------------------------------------------------------
@@ -89,7 +89,7 @@ _CSS = """
 .dj-kpi:before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:#0B5D4B;opacity:.9;}
 .dj-kpi.or:before{background:#B8893B;}
 .dj-kpi .l{font:600 11px/1.3 Inter,sans-serif;letter-spacing:.07em;text-transform:uppercase;color:#5B6B65;}
-.dj-kpi .v{font-family:"Plus Jakarta Sans",Inter,sans-serif;font-weight:700;font-size:1.45rem;
+.dj-kpi .v{font-family:"Plus Jakarta Sans",Inter,sans-serif;font-weight:700;font-size:1.32rem;
   color:#0F1F1A;margin-top:6px;line-height:1.1;letter-spacing:-.01em;}
 .dj-kpi .h{font-size:11.5px;color:#7A8A84;margin-top:5px;}
 .dj-chip{display:inline-block;font:600 11px/1 Inter,sans-serif;padding:4px 7px;border-radius:999px;
@@ -98,11 +98,10 @@ _CSS = """
 .dj-chip.down{background:#FBEAE8;color:#B3261E;}
 .dj-chip.flat{background:#EEF1F3;color:#5B6B65;}
 /* Titres de section */
-.dj-sec{display:flex;align-items:baseline;gap:10px;margin:22px 0 10px;}
-.dj-sec h3{font-family:"Plus Jakarta Sans",Inter,sans-serif;font-size:1.08rem;font-weight:700;
-  color:#0F1F1A;margin:0;padding:0;}
-.dj-sec span{font-size:.85rem;color:#7A8A84;}
-.dj-sec:before{content:"";width:4px;height:16px;border-radius:2px;background:#B8893B;align-self:center;}
+.dj-sec{margin:26px 0 12px;padding-left:12px;border-left:4px solid #B8893B;}
+.dj-sec .t{font-family:"Plus Jakarta Sans",Inter,sans-serif;font-size:1.06rem;font-weight:700;
+  color:#0F1F1A;line-height:1.25;letter-spacing:-.005em;}
+.dj-sec .a{font-size:.8rem;color:#7A8A84;margin-top:2px;}
 /* Pastilles */
 .dj-badge{display:inline-block;font:600 11.5px/1 Inter,sans-serif;padding:5px 9px;border-radius:999px;
   border:1px solid transparent;white-space:nowrap;}
@@ -116,7 +115,7 @@ _CSS = """
 .dj-rank .n{width:26px;height:26px;border-radius:50%;background:#0B5D4B;color:#fff;
   font:700 12px/26px Inter,sans-serif;text-align:center;flex:none;}
 .dj-rank .t{flex:1;min-width:0;}
-.dj-rank .t b{color:#0F1F1A;font-size:.92rem;}
+.dj-rank .t b{color:#0F1F1A;font-size:.9rem;display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .dj-rank .t div{color:#7A8A84;font-size:.8rem;}
 .dj-rank .s{font-family:"Plus Jakarta Sans",Inter,sans-serif;font-weight:700;color:#0B5D4B;}
 /* Mentions & pied de page */
@@ -187,8 +186,8 @@ def kpi_row(items: list[dict]) -> None:
 
 def section(titre: str, aide: str = "") -> None:
     """Titre de section avec filet doré."""
-    st.markdown(f'<div class="dj-sec"><h3>{titre}</h3>'
-                + (f"<span>{aide}</span>" if aide else "") + "</div>",
+    st.markdown(f'<div class="dj-sec"><div class="t">{titre}</div>'
+                + (f'<div class="a">{aide}</div>' if aide else "") + "</div>",
                 unsafe_allow_html=True)
 
 
@@ -204,10 +203,13 @@ def note(texte: str) -> None:
 
 def style_fig(fig, hauteur: int | None = None, titre: str | None = None):
     """Harmonise un graphique Plotly avec la charte (police, grilles, marges)."""
+    if titre:
+        fig.update_layout(title=dict(text=titre, font=dict(family="Plus Jakarta Sans, Inter",
+                                                           size=15), x=0, xanchor="left"))
+    else:
+        fig.update_layout(title_text="")
     fig.update_layout(
         font=dict(family="Inter, sans-serif", size=12, color=ENCRE),
-        title=dict(text=titre, font=dict(family="Plus Jakarta Sans, Inter", size=15),
-                   x=0, xanchor="left") if titre else None,
         margin=dict(l=6, r=6, t=46 if titre else 12, b=6),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         legend=dict(orientation="h", yanchor="bottom", y=1.0, xanchor="left", x=0,
@@ -333,3 +335,21 @@ def alertes(_key: int = 1) -> pd.DataFrame:
                      "ndvi_baisse": round(-sub["ndvi_delta_6m"].mean(), 3),
                      "acces_min": c["access_moyen"]})
     return pd.DataFrame(rows).sort_values("hausse_pct", ascending=False)
+
+
+# ---------------------------------------------------------------------------
+# Base de données en ligne (v2.1 — secret DJILAND_DB_URL, voir PERSISTANCE.md)
+# ---------------------------------------------------------------------------
+MSG_NON_ENREGISTRE = ("**Rien n'a été enregistré** : la base de données en ligne ne répond "
+                      "pas. Réessayez dans une minute.")
+
+
+def alerte_base() -> None:
+    """Prévient si la base en ligne (prix réels, notes) ne répond pas."""
+    from src import persistance
+
+    err = persistance.etat()["erreur"]
+    if err:
+        st.error("**Base de données en ligne injoignable** : vos prix réels et notes de "
+                 "carte ne peuvent être ni lus ni enregistrés pour l'instant. Réessayez dans "
+                 f"une minute. _(Détail technique : {err})_", icon=":material/cloud_off:")

@@ -30,7 +30,7 @@ from dashboard.core import (  # noqa: E402
 )
 
 st.set_page_config(page_title="Djiland · Land Intelligence", page_icon=":material/landscape:",
-                   layout="wide", initial_sidebar_state="expanded")
+                   layout="wide", initial_sidebar_state="auto")
 inject_css()
 st.logo(str(ASSETS / "logo.svg"), size="large", icon_image=str(ASSETS / "icon.svg"))
 gate()
@@ -65,7 +65,7 @@ pages = {
         st.Page(V + "rapports.py", title="Rapports PDF", icon=":material/picture_as_pdf:"),
     ],
 }
-page = st.navigation(pages, position="sidebar")
+page = st.navigation(pages, position="sidebar", expanded=True)
 
 with st.sidebar:
     fr = lambda iso: f"{iso[8:10]}/{iso[5:7]}/{iso[:4]}"  # noqa: E731

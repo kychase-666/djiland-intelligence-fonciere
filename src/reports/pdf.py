@@ -28,13 +28,13 @@ from reportlab.platypus import (
 )
 
 # Palette Djiland
-VERT = colors.HexColor("#1F6F5C")
-VERT_FONCE = colors.HexColor("#123c33")
-OR = colors.HexColor("#C8A04B")
+VERT = colors.HexColor("#0B5D4B")
+VERT_FONCE = colors.HexColor("#0C1F1B")
+OR = colors.HexColor("#B8893B")
 ROUGE = colors.HexColor("#dc2626")
 ORANGE = colors.HexColor("#f59e0b")
 VERT_OK = colors.HexColor("#16a34a")
-GRIS = colors.HexColor("#EEECE6")
+GRIS = colors.HexColor("#EEF3F1")
 
 _STYLES = getSampleStyleSheet()
 H_SECTION = ParagraphStyle("sec", parent=_STYLES["Heading2"], textColor=colors.white,
@@ -284,3 +284,97 @@ def build_full_report(d: dict, output_path: str | None = None) -> bytes:
 def build_report(parcelle: dict, output_path: str | None = None) -> bytes:
     """Compatibilité : redirige vers le rapport professionnel complet."""
     return build_full_report(parcelle, output_path)
+
+
+def build_bilan_pdf(params, res: dict, contexte: dict) -> bytes:
+    """Bilan promoteur au format PDF (une à deux pages, charte Djiland).
+
+    Args:
+        params: ParamsBilan de l'opération.
+        res: résultat de src.analysis.bilan.calculer_bilan(params).
+        contexte: {"zone", "programme", "standing", "verdict"}.
+    """
+    buf = io.BytesIO()
+    doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=1.7 * cm, bottomMargin=1.5 * cm,
+                            leftMargin=2 * cm, rightMargin=2 * cm,
+                            title=f"Bilan promoteur — {contexte.get('zone', '')}")
+    m = lambda v: _fmt(v, " FCFA")  # noqa: E731
+    pc = lambda v: "—" if v is None else f"{v:.1f} %".replace(".", ",")  # noqa: E731
+    ca = res["chiffre_affaires"] or 0
+    story = [
+        Paragraph("BILAN PROMOTEUR — ÉTUDE DE FAISABILITÉ",
+                  ParagraphStyle("t", parent=_STYLES["Title"], textColor=VERT_FONCE, fontSize=18)),
+        Paragraph(f"{contexte.get('programme', '')}"
+                  + (f" · {contexte['standing']}" if contexte.get("standing") else "")
+                  + f" · {contexte.get('zone', '')} · établi le "
+                  f"{datetime.now(timezone.utc):%d/%m/%Y}",
+                  ParagraphStyle("st", parent=_STYLES["Normal"], fontSize=10, alignment=TA_CENTER,
+                                 textColor=colors.HexColor("#5B6B65"))),
+        Spacer(1, 0.4 * cm),
+    ]
+    coul = (VERT_OK if (res["marge_pct_ca"] or -1) >= 20 else
+            ORANGE if (res["marge_pct_ca"] or -1) >= 10 else ROUGE)
+    vt = Table([[Paragraph(f"<b>{contexte.get('verdict', '')}</b>",
+                           ParagraphStyle("v", parent=_STYLES["Normal"], fontSize=13,
+                                          textColor=colors.white, alignment=TA_CENTER))]],
+               colWidths=[17 * cm])
+    vt.setStyle(TableStyle([("BACKGROUND", (0, 0), (-1, -1), coul),
+                            ("TOPPADDING", (0, 0), (-1, -1), 7),
+                            ("BOTTOMPADDING", (0, 0), (-1, -1), 7)]))
+    story += [vt, Spacer(1, 0.4 * cm)]
+
+    story += [_section("1 · Synthèse"), Spacer(1, 0.15 * cm), _kv([
+        ("Chiffre d'affaires", m(ca)),
+        ("Coût de revient total", m(res["cout_revient"])),
+        ("Marge brute", f"{m(res['marge'])} ({pc(res['marge_pct_ca'])} du CA)"),
+        ("TRI du projet (annualisé, avant financement)", pc(res["tri_projet_pct"])),
+        ("Prix de vente d'équilibre", _fmt(res["prix_equilibre_m2"], " FCFA/m²")),
+        ("Prix de vente pour 20 % de marge", _fmt(res["prix_marge20_m2"], " FCFA/m²")),
+        ("Fonds propres requis", m(res["fonds_propres"])),
+        ("Rentabilité des fonds propres", pc(res["rentabilite_fonds_propres_pct"])),
+    ]), Spacer(1, 0.35 * cm)]
+
+    story += [_section("2 · Programme et terrain"), Spacer(1, 0.15 * cm), _kv([
+        ("Surface du terrain", _fmt(params.surface_terrain_m2, " m²")),
+        ("Prix du terrain", m(params.prix_terrain_total)),
+        ("Surface de plancher", _fmt(res["surface_plancher_m2"], " m²")),
+        ("Surface vendable", _fmt(res["surface_vendable_m2"], " m²")),
+        ("Coût de construction", _fmt(params.cout_construction_m2, " FCFA/m² plancher")),
+        ("Viabilisation / VRD", _fmt(params.vrd_m2_terrain, " FCFA/m² terrain")),
+        ("Prix de vente retenu", _fmt(params.prix_vente_m2, " FCFA/m²")),
+    ]), Spacer(1, 0.35 * cm)]
+
+    lignes = [[Paragraph("<b>Poste</b>", P), Paragraph("<b>Montant</b>", P),
+               Paragraph("<b>% du CA</b>", P)]]
+    for k, v in res["postes"].items():
+        lignes.append([Paragraph(k, P), Paragraph(m(v), P),
+                       Paragraph(pc(v / ca * 100 if ca else None), P)])
+    lignes.append([Paragraph("<b>Coût de revient total</b>", P),
+                   Paragraph(f"<b>{m(res['cout_revient'])}</b>", P),
+                   Paragraph(pc(res["cout_revient"] / ca * 100 if ca else None), P)])
+    lignes.append([Paragraph("<b>Marge brute</b>", P), Paragraph(f"<b>{m(res['marge'])}</b>", P),
+                   Paragraph(f"<b>{pc(res['marge_pct_ca'])}</b>", P)])
+    t = Table(lignes, colWidths=[8 * cm, 5.5 * cm, 3.5 * cm])
+    t.setStyle(TableStyle([
+        ("GRID", (0, 0), (-1, -1), 0.4, colors.HexColor("#DDDDDD")),
+        ("BACKGROUND", (0, 0), (-1, 0), GRIS),
+        ("BACKGROUND", (0, -2), (-1, -1), colors.HexColor("#F7F3EA")),
+        ("TOPPADDING", (0, 0), (-1, -1), 4), ("BOTTOMPADDING", (0, 0), (-1, -1), 4)]))
+    story += [_section("3 · Détail du bilan"), Spacer(1, 0.15 * cm), t, Spacer(1, 0.35 * cm)]
+
+    story += [_section("4 · Hypothèses"), Spacer(1, 0.15 * cm), _kv([
+        ("Frais d'acquisition", pc(params.frais_acquisition_pct) + " du terrain"),
+        ("Honoraires & études", pc(params.honoraires_pct) + " des travaux"),
+        ("Imprévus", pc(params.imprevus_pct) + " des travaux"),
+        ("Frais commerciaux", pc(params.frais_commerciaux_pct) + " du CA"),
+        ("Financement", f"{pc(params.part_credit_pct)} à {pc(params.taux_credit_pct)}/an"),
+        ("Durée de l'opération", f"{params.duree_mois} mois"),
+    ]), Spacer(1, 0.4 * cm), HRFlowable(width="100%", color=OR, thickness=1),
+        Spacer(1, 0.15 * cm),
+        Paragraph("AVERTISSEMENT : étude de faisabilité indicative produite par la plateforme "
+                  "Djiland. Ventes encaissées à la livraison, travaux étalés sur la durée, "
+                  "crédit tiré progressivement. Les coûts et prix sont des ordres de grandeur à "
+                  "valider par un architecte, un économiste de la construction et un notaire.",
+                  P_SMALL)]
+    doc.build(story, onFirstPage=_header_footer, onLaterPages=_header_footer)
+    return buf.getvalue()
