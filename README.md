@@ -50,8 +50,10 @@ docker compose up --build
   Même verdict que le PDF (`src/analysis/opportunites.py` = source unique).
 - **Prix réels → recalage automatique** : dès 3 observations réelles dans une zone,
   les estimations de cette zone sont recalées sur vos prix.
-- **Sauvegarde / restauration** des prix réels et des notes de carte (CSV) — la
-  version en ligne gratuite efface les données saisies à chaque mise en veille.
+- **Enregistrement permanent en ligne** des prix réels et des notes de carte dans
+  une base PostgreSQL gratuite (Neon) via le secret `DJILAND_DB_URL` — guide
+  [PERSISTANCE.md](PERSISTANCE.md). Sans ce secret : fichiers locaux.
+- **Sauvegarde / restauration** des prix réels et des notes de carte (CSV).
 - **Correctifs** : fond de carte CARTO (devenu payant, « API KEY REQUIRED ») remplacé
   par Esri Light Gray gratuit ; carte qui ne remplissait que 60 % de son cadre
   (minuscule sur téléphone) ; carte des résultats cadrée « monde entier » dans un

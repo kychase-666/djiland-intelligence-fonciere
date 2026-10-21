@@ -51,8 +51,7 @@ GitHub vous demandera de vous connecter (une fenêtre s'ouvre) — acceptez.
 ## Bon à savoir (honnête)
 - **Lien fixe & permanent** : plus besoin que le Mac soit allumé.
 - **Gratuit** (offre Community de Streamlit).
-- ⚠️ **Saisies de prix/notes = temporaires en ligne** : le cloud gratuit efface les
-  fichiers à chaque redémarrage de l'app. Pour un enregistrement **permanent et
-  multi-utilisateur**, il faudra brancher une petite base de données (étape future).
-  Pour consulter/démontrer, tout fonctionne parfaitement.
+- ⚠️ **Saisies de prix/notes** : le cloud gratuit efface ses fichiers à chaque
+  redémarrage. Pour un enregistrement **permanent**, branchez la base gratuite
+  Neon en 5 min : guide **[PERSISTANCE.md](PERSISTANCE.md)** (secret `DJILAND_DB_URL`).
 - **Mettre à jour** : après une modif, refaites `git push` — Streamlit redéploie tout seul.

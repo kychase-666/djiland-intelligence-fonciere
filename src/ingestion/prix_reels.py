@@ -11,6 +11,9 @@ contraires aux CGU), mais la donnée EXCLUSIVE que Djiland collecte :
 Chaque observation est horodatée et alimente les analyses (tendances, alertes,
 calculateur, évaluation). Dès qu'une zone atteint un seuil d'observations
 réelles, le système utilise le PRIX RÉEL au lieu du prix calibré.
+
+Stockage : base en ligne permanente si DJILAND_DB_URL est configurée (voir
+src/persistance.py), sinon fichier data/grand_abidjan/prix_reels.parquet.
 """
 from __future__ import annotations
 
@@ -20,6 +23,7 @@ import pandas as pd
 from loguru import logger
 
 from config import ALL_ZONES, GRAND_ABIDJAN_DIR
+from src import persistance as db
 
 PRIX_REELS_PATH = GRAND_ABIDJAN_DIR / "prix_reels.parquet"
 SEUIL_REEL = 3            # nb minimal d'observations pour utiliser le prix réel
@@ -31,16 +35,36 @@ COLONNES = ["date_obs", "type_source", "source", "commune", "quartier",
 TYPES_SOURCE = ["Transaction Djiland", "Relevé agent terrain",
                 "Annonce (courtier/notaire)", "Import CSV", "Autre"]
 TYPES_BIEN = ["terrain nu", "terrain loti", "villa", "appartement", "immeuble", "autre"]
+_NUMERIQUES = {"surface_m2", "prix_total_fcfa", "prix_m2_fcfa", "lon", "lat"}
 
 
-def load_prix_reels() -> pd.DataFrame:
-    """Charge la base de prix réels (DataFrame vide si aucune donnée)."""
+def _load_fichier() -> pd.DataFrame:
     if PRIX_REELS_PATH.exists():
         try:
             return pd.read_parquet(PRIX_REELS_PATH)
         except Exception as exc:
             logger.warning(f"[PRIX] Lecture impossible ({exc}).")
     return pd.DataFrame(columns=COLONNES)
+
+
+TABLE = db.Table("djiland_prix_reels",
+                 {c: db.NUMERIQUE if c in _NUMERIQUES else db.TEXTE for c in COLONNES},
+                 graine=_load_fichier)
+
+
+def load_prix_reels() -> pd.DataFrame:
+    """Charge la base de prix réels (DataFrame vide si aucune donnée)."""
+    return db.lire(TABLE) if db.actif() else _load_fichier()
+
+
+def _ajouter(rows: list[dict]) -> int:
+    """Persiste de nouvelles observations ; renvoie le total de la base."""
+    if db.actif():
+        db.ajouter(TABLE, rows)
+        return len(db.lire(TABLE))
+    df = pd.concat([_load_fichier(), pd.DataFrame(rows)], ignore_index=True)
+    df.to_parquet(PRIX_REELS_PATH)
+    return len(df)
 
 
 def _finalize(obs: dict) -> dict:
@@ -55,11 +79,9 @@ def _finalize(obs: dict) -> dict:
 def add_observation(obs: dict) -> None:
     """Ajoute une observation de prix réel et persiste."""
     obs = _finalize({k: obs.get(k) for k in COLONNES})
-    df = load_prix_reels()
-    df = pd.concat([df, pd.DataFrame([obs])], ignore_index=True)
-    df.to_parquet(PRIX_REELS_PATH)
+    total = _ajouter([obs])
     logger.success(f"[PRIX] Observation ajoutée ({obs['commune']} — "
-                   f"{obs['prix_m2_fcfa']} F/m²). Total : {len(df)}.")
+                   f"{obs['prix_m2_fcfa']} F/m²). Total : {total}.")
 
 
 def import_csv(df_in: pd.DataFrame) -> int:
@@ -90,8 +112,7 @@ def import_csv(df_in: pd.DataFrame) -> int:
         if obs["commune"] and obs["prix_m2_fcfa"]:
             rows.append(obs)
     if rows:
-        df = pd.concat([load_prix_reels(), pd.DataFrame(rows)], ignore_index=True)
-        df.to_parquet(PRIX_REELS_PATH)
+        _ajouter(rows)
     logger.success(f"[PRIX] Import CSV : {len(rows)} lignes valides.")
     return len(rows)
 
