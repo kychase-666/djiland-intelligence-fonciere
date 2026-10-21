@@ -21,3 +21,6 @@ branca>=0.7,<0.9
 reportlab>=4.2,<6
 python-dotenv>=1.0,<2
 loguru>=0.7,<0.8
+# Base en ligne PERMANENTE (prix réels + notes) — PostgreSQL gratuit Neon/Supabase,
+# activée par le secret DJILAND_DB_URL (testé : psycopg 3.3.6). Voir PERSISTANCE.md.
+psycopg[binary]>=3.2,<3.4

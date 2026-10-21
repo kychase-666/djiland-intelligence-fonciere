@@ -2,8 +2,10 @@
 Gestion des ANNOTATIONS cartographiques (dessins + notes) de l'utilisateur.
 
 Permet de dessiner des points, lignes ou zones sur la carte et d'y attacher une
-note. Les annotations sont persistées en GeoParquet et réaffichées à chaque
-ouverture du dashboard (mémoire de terrain de l'équipe Djiland).
+note. Les annotations sont persistées et réaffichées à chaque ouverture du
+dashboard (mémoire de terrain de l'équipe Djiland) : dans la base en ligne si
+DJILAND_DB_URL est configurée (voir src/persistance.py, géométrie au format
+WKT), sinon en GeoParquet local.
 """
 from __future__ import annotations
 
@@ -16,6 +18,7 @@ from shapely import wkt
 from shapely.geometry import shape
 
 from config import CRS_DISPLAY, GRAND_ABIDJAN_DIR
+from src import persistance as db
 
 NOTES_PATH = GRAND_ABIDJAN_DIR / "notes.parquet"
 COLS = ["note", "categorie", "auteur", "date", "geometry"]
@@ -30,14 +33,57 @@ CATEGORIE_COULEUR = {
 }
 
 
-def load_notes() -> gpd.GeoDataFrame:
-    """Charge les annotations enregistrées (GeoDataFrame vide si aucune)."""
+def _vide() -> gpd.GeoDataFrame:
+    return gpd.GeoDataFrame(columns=COLS, geometry="geometry", crs=CRS_DISPLAY)
+
+
+def _load_fichier() -> gpd.GeoDataFrame:
     if NOTES_PATH.exists():
         try:
             return gpd.read_parquet(NOTES_PATH)
         except Exception as exc:
             logger.warning(f"[NOTES] Lecture impossible ({exc}).")
-    return gpd.GeoDataFrame(columns=COLS, geometry="geometry", crs=CRS_DISPLAY)
+    return _vide()
+
+
+def _en_lignes(gdf: gpd.GeoDataFrame) -> pd.DataFrame:
+    """Annotations → lignes de la table en ligne (géométrie en texte WKT)."""
+    df = pd.DataFrame(gdf.drop(columns="geometry"))
+    df["geometrie_wkt"] = [g.wkt if g is not None else None for g in gdf.geometry]
+    return df
+
+
+TABLE = db.Table("djiland_notes",
+                 {"note": db.TEXTE, "categorie": db.TEXTE, "auteur": db.TEXTE,
+                  "date": db.TEXTE, "geometrie_wkt": db.TEXTE},
+                 graine=lambda: _en_lignes(_load_fichier()))
+
+
+def _load_base() -> gpd.GeoDataFrame:
+    rows = []
+    for r in db.lire(TABLE).to_dict("records"):
+        try:
+            geom = wkt.loads(r.pop("geometrie_wkt"))
+        except Exception:
+            continue
+        rows.append({**{c: r.get(c) for c in COLS[:-1]}, "geometry": geom})
+    if not rows:
+        return _vide()
+    return gpd.GeoDataFrame(rows, columns=COLS, geometry="geometry", crs=CRS_DISPLAY)
+
+
+def load_notes() -> gpd.GeoDataFrame:
+    """Charge les annotations enregistrées (GeoDataFrame vide si aucune)."""
+    return _load_base() if db.actif() else _load_fichier()
+
+
+def _ajouter(new: gpd.GeoDataFrame) -> None:
+    """Persiste de nouvelles annotations (à la suite des existantes)."""
+    if db.actif():
+        db.ajouter(TABLE, _en_lignes(new).to_dict("records"))
+        return
+    out = pd.concat([_load_fichier(), new], ignore_index=True)
+    gpd.GeoDataFrame(out, geometry="geometry", crs=CRS_DISPLAY).to_parquet(NOTES_PATH)
 
 
 def save_note(drawing_geojson: dict, note: str, categorie: str, auteur: str) -> None:
@@ -50,18 +96,20 @@ def save_note(drawing_geojson: dict, note: str, categorie: str, auteur: str) -> 
         auteur: nom de l'agent / utilisateur.
     """
     geom = shape(drawing_geojson["geometry"])
-    gdf = load_notes()
     new = gpd.GeoDataFrame(
         [{"note": note, "categorie": categorie, "auteur": auteur,
           "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"), "geometry": geom}],
         crs=CRS_DISPLAY)
-    out = pd.concat([gdf, new], ignore_index=True)
-    gpd.GeoDataFrame(out, geometry="geometry", crs=CRS_DISPLAY).to_parquet(NOTES_PATH)
+    _ajouter(new)
     logger.success(f"[NOTES] Annotation enregistrée ({categorie}).")
 
 
 def delete_note(index: int) -> None:
     """Supprime l'annotation à l'index donné."""
+    if db.actif():
+        if db.supprimer_position(TABLE, index):
+            logger.info(f"[NOTES] Annotation #{index} supprimée.")
+        return
     gdf = load_notes()
     if 0 <= index < len(gdf):
         gdf = gdf.drop(gdf.index[index]).reset_index(drop=True)
@@ -71,7 +119,10 @@ def delete_note(index: int) -> None:
 
 def clear_notes() -> None:
     """Efface toutes les annotations."""
-    if NOTES_PATH.exists():
+    if db.actif():
+        db.vider(TABLE)
+        logger.info("[NOTES] Toutes les annotations effacées.")
+    elif NOTES_PATH.exists():
         NOTES_PATH.unlink()
         logger.info("[NOTES] Toutes les annotations effacées.")
 
@@ -103,8 +154,6 @@ def import_notes_csv(df_in: pd.DataFrame) -> int:
                      "auteur": r.get("auteur", ""), "date": str(r.get("date", "")),
                      "geometry": geom})
     if rows:
-        new = gpd.GeoDataFrame(rows, geometry="geometry", crs=CRS_DISPLAY)
-        out = pd.concat([load_notes(), new], ignore_index=True)
-        gpd.GeoDataFrame(out, geometry="geometry", crs=CRS_DISPLAY).to_parquet(NOTES_PATH)
+        _ajouter(gpd.GeoDataFrame(rows, geometry="geometry", crs=CRS_DISPLAY))
     logger.success(f"[NOTES] {len(rows)} annotation(s) restaurée(s).")
     return len(rows)

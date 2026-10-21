@@ -34,6 +34,7 @@ pandas==2.2.2
 SQLAlchemy==2.0.31
 GeoAlchemy2==0.15.2
 psycopg2-binary==2.9.9
+psycopg[binary]==3.3.6      # base en ligne prix réels/notes (src/persistance.py)
 
 # API + Dashboard
 fastapi==0.111.1

@@ -29,11 +29,15 @@ from config import (  # noqa: E402
     QUARTIERS,
     QUARTIERS_GENERIQUES,
 )
+from src import persistance                                    # noqa: E402
 from src.reports.pdf import build_report                       # noqa: E402
 
 # Version hébergée sur Streamlit Cloud (code monté dans /mount/src) : le disque
-# y est éphémère → les données saisies sont effacées à chaque mise en veille.
+# y est éphémère → sans base en ligne (secret DJILAND_DB_URL), les données
+# saisies sont effacées à chaque mise en veille.
 EN_LIGNE = str(ROOT).startswith("/mount/src")
+MSG_NON_ENREGISTRE = ("❌ **Rien n'a été enregistré** : la base de données en ligne ne répond "
+                      "pas. Réessayez dans une minute.")
 
 st.set_page_config(page_title="Djiland · Grand Abidjan", layout="wide", page_icon="🛰️")
 
@@ -192,6 +196,15 @@ def alertes(_key: int) -> pd.DataFrame:
                      "ndvi_baisse": round(-sub["ndvi_delta_6m"].mean(), 3),
                      "acces_min": c["access_moyen"]})
     return pd.DataFrame(rows).sort_values("hausse_pct", ascending=False)
+
+
+def _alerte_base() -> None:
+    """Prévient si la base en ligne (prix réels, notes) ne répond pas."""
+    err = persistance.etat()["erreur"]
+    if err:
+        st.error("⚠️ **Base de données en ligne injoignable** : vos prix réels et notes de "
+                 "carte ne peuvent être ni lus ni enregistrés pour l'instant. Réessayez dans "
+                 f"une minute. _(Détail technique : {err})_")
 
 
 communes, parcelles = load()
@@ -604,6 +617,7 @@ with tab_prix:
     k1.metric("Observations réelles", len(obs))
     k2.metric("Zones couvertes", obs["commune"].nunique() if len(obs) else 0)
     k3.metric("Zones ≥ seuil (3)", int((rz["n_obs"] >= pr.SEUIL_REEL).sum()) if len(rz) else 0)
+    _alerte_base()
 
     st.markdown("#### ➕ Saisir une observation")
     with st.form("prix_form", clear_on_submit=True):
@@ -623,13 +637,18 @@ with tab_prix:
             if not (prix_total or prix_m2):
                 st.error("Renseignez le prix total OU le prix au m².")
             else:
-                pr.add_observation({
-                    "date_obs": str(date_obs), "type_source": type_source, "source": type_source,
-                    "commune": commune, "quartier": quartier or None, "type_bien": type_bien,
-                    "surface_m2": surface, "prix_total_fcfa": prix_total or None,
-                    "prix_m2_fcfa": prix_m2 or None, "note": note or None})
-                st.cache_data.clear()
-                st.rerun()
+                try:
+                    pr.add_observation({
+                        "date_obs": str(date_obs), "type_source": type_source,
+                        "source": type_source, "commune": commune,
+                        "quartier": quartier or None, "type_bien": type_bien,
+                        "surface_m2": surface, "prix_total_fcfa": prix_total or None,
+                        "prix_m2_fcfa": prix_m2 or None, "note": note or None})
+                except persistance.BaseIndisponible:
+                    st.error(MSG_NON_ENREGISTRE)
+                else:
+                    st.cache_data.clear()
+                    st.rerun()
 
     st.markdown("#### 📥 Import CSV en masse")
     st.caption("Colonnes : commune, quartier, type_bien, surface_m2, "
@@ -658,10 +677,19 @@ with tab_prix:
         st.dataframe(obs.tail(20)[::-1], width="stretch", hide_index=True)
 
     st.markdown("#### 💾 Sauvegarde & restauration de vos données")
-    if EN_LIGNE:
+    etat_base = persistance.etat()
+    if etat_base["mode"] == "base":
+        fournisseur = ".".join((etat_base["hote"] or "").split(".")[-2:])
+        st.success(f"🔒 **Enregistrement permanent activé** : vos prix réels et notes de carte "
+                   f"sont stockés dans votre base de données en ligne ({fournisseur}). Ils "
+                   "survivent aux mises en veille et aux mises à jour. La sauvegarde CSV "
+                   "ci-dessous reste utile comme archive.")
+    elif EN_LIGNE:
         st.warning("**Version en ligne** : l'hébergement gratuit **efface les données saisies** "
                    "(prix réels, notes de carte) à chaque mise en veille ou mise à jour. "
-                   "**Téléchargez une sauvegarde** après chaque saisie, et restaurez-la au besoin.")
+                   "**Téléchargez une sauvegarde** après chaque saisie, et restaurez-la au besoin. "
+                   "Pour un enregistrement permanent, ajoutez le secret `DJILAND_DB_URL` "
+                   "(guide PERSISTANCE.md).")
     else:
         st.caption("Gardez une copie de vos données : utile pour les transférer vers la version "
                    "en ligne ou les archiver.")
@@ -812,25 +840,34 @@ with tab_annot:
                 auteur = st.text_input("Auteur", value="Djiland")
                 texte = st.text_area("Note", placeholder="Ex : terrain viabilisé, prix négociable…")
                 if st.form_submit_button("💾 Enregistrer", type="primary"):
-                    notes_mod.save_note(draw, texte, cat, auteur)
-                    st.cache_data.clear()
-                    st.session_state["map_nonce"] = st.session_state.get("map_nonce", 0) + 1
-                    st.rerun()
+                    try:
+                        notes_mod.save_note(draw, texte, cat, auteur)
+                    except persistance.BaseIndisponible:
+                        st.error(MSG_NON_ENREGISTRE)
+                    else:
+                        st.cache_data.clear()
+                        st.session_state["map_nonce"] = st.session_state.get("map_nonce", 0) + 1
+                        st.rerun()
         else:
             st.info("👉 Dessinez d'abord une forme sur la carte, puis annotez-la ici.")
 
         st.divider()
         existing = notes_mod.load_notes()
+        _alerte_base()
         st.markdown(f"**{len(existing)} annotation(s) enregistrée(s)**")
         for i, r in existing.iterrows():
             with st.container(border=True):
                 st.markdown(f"**{r['categorie']}** — {r['note'] or '_(sans texte)_'}")
                 st.caption(f"{r['auteur']} · {r['date']}")
                 if st.button("🗑️ Supprimer", key=f"del{i}"):
-                    notes_mod.delete_note(i)
-                    st.cache_data.clear()
-                    st.session_state["map_nonce"] = st.session_state.get("map_nonce", 0) + 1
-                    st.rerun()
+                    try:
+                        notes_mod.delete_note(i)
+                    except persistance.BaseIndisponible:
+                        st.error(MSG_NON_ENREGISTRE)
+                    else:
+                        st.cache_data.clear()
+                        st.session_state["map_nonce"] = st.session_state.get("map_nonce", 0) + 1
+                        st.rerun()
 
 # ---------------------------------------------------------------------------
 # Onglet 6 — Rapport PDF
