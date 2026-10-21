@@ -189,3 +189,10 @@ DATABASE_URL = f"postgresql+psycopg2://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_POR
 
 # Mode démo : True => utilise les données synthétiques ; False => vraies API
 DEMO_MODE = os.getenv("DEMO_MODE", "true").lower() == "true"
+
+# ---------------------------------------------------------------------------
+# 7. Version de l'application (affichée en pied de page du dashboard)
+# ---------------------------------------------------------------------------
+APP_VERSION = "2.0"
+APP_UPDATED = "2026-10-20"      # date de la dernière mise à jour du logiciel
+DATA_BUILT = "2026-08-04"       # date de construction des couches OSM / parcelles

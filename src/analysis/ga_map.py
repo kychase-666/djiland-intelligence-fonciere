@@ -16,6 +16,8 @@ contrôleur de calques (aucun rechargement serveur nécessaire).
 from __future__ import annotations
 
 import branca.colormap as cm
+from branca.element import MacroElement
+from jinja2 import Template
 import folium
 import geopandas as gpd
 import numpy as np
@@ -45,6 +47,13 @@ POI_STYLE = {
     "Station-service": ("#92400e", "gas-pump", False),
     "Culte":           ("#64748b", "place-of-worship", False),
 }
+
+
+# Fond « plan clair » GRATUIT et sans clé (Esri Light Gray Canvas). Remplace
+# CARTO Positron, qui exige une clé API depuis 2026 (tuiles « API KEY REQUIRED »).
+PLAN_CLAIR_TILES = ("https://server.arcgisonline.com/ArcGIS/rest/services/Canvas/"
+                    "World_Light_Gray_Base/MapServer/tile/{z}/{y}/{x}")
+PLAN_CLAIR_ATTR = "Tiles © Esri — Esri, HERE, Garmin, © OpenStreetMap contributors"
 
 
 def _notes_layer(show: bool = True) -> folium.FeatureGroup:
@@ -274,16 +283,17 @@ def build_map(metric_parcelle: str = "prix_m2_fcfa") -> folium.Map:
                    prefer_canvas=True)
 
     # --- 1. Fonds de carte (base layers) ------------------------------------
-    folium.TileLayer("CartoDB positron", name="🗺️ Plan clair", control=True).add_to(m)
+    folium.TileLayer(tiles=PLAN_CLAIR_TILES, attr=PLAN_CLAIR_ATTR, name="🗺️ Plan clair",
+                     control=True, show=True).add_to(m)
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        attr="Esri World Imagery", name="🛰️ Satellite", control=True, show=True).add_to(m)
+        attr="Esri World Imagery", name="🛰️ Satellite", control=True, show=False).add_to(m)
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Terrain_Base/MapServer/tile/{z}/{y}/{x}",
-        attr="Esri World Terrain", name="⛰️ Relief / Terrain", control=True).add_to(m)
+        attr="Esri World Terrain", name="⛰️ Relief / Terrain", control=True, show=False).add_to(m)
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Shaded_Relief/MapServer/tile/{z}/{y}/{x}",
-        attr="Esri Shaded Relief", name="🏔️ Ombrage relief", control=True).add_to(m)
+        attr="Esri Shaded Relief", name="🏔️ Ombrage relief", control=True, show=False).add_to(m)
 
     # --- 2. Choroplèthes par commune (prix global par zone) -----------------
     if communes is not None:
@@ -458,8 +468,9 @@ def build_map_lite(metric_parcelle: str = "prix_m2_fcfa", n_sample: int = 130) -
                    control_scale=True, prefer_canvas=True, scrollWheelZoom=False)
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
-        attr="Esri", name="🛰️ Satellite", show=True).add_to(m)
-    folium.TileLayer("CartoDB positron", name="🗺️ Plan clair").add_to(m)
+        attr="Esri", name="🛰️ Satellite", show=False).add_to(m)
+    folium.TileLayer(tiles=PLAN_CLAIR_TILES, attr=PLAN_CLAIR_ATTR,
+                     name="🗺️ Plan clair", show=True).add_to(m)
 
     if communes is not None:
         cmap = cm.LinearColormap(
@@ -529,7 +540,8 @@ def build_annotation_map() -> folium.Map:
     folium.TileLayer(
         tiles="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
         attr="Esri World Imagery", name="🛰️ Satellite", show=True).add_to(m)
-    folium.TileLayer("CartoDB positron", name="🗺️ Plan clair").add_to(m)
+    folium.TileLayer(tiles=PLAN_CLAIR_TILES, attr=PLAN_CLAIR_ATTR,
+                     name="🗺️ Plan clair", show=False).add_to(m)
 
     communes = _load("communes.parquet")
     if communes is not None:
@@ -633,3 +645,55 @@ def legend_body(complet: bool = True) -> str:
 def _legend_html() -> str:
     """(Compat) légende déplaçable en overlay — plus utilisée (légende hors carte)."""
     return _draggable_panel(legend_body(), "🗺️ Légende", "djleg", "bottom:24px;left:12px;", 250)
+
+
+
+class _FitQuandVisible(MacroElement):
+    """Élément Folium : recadre la carte dès qu'elle a une vraie taille.
+
+    Rendu comme enfant de la carte → son script s'exécute APRÈS la création
+    de la carte (même mécanisme que folium.map.FitBounds).
+    """
+
+    _template = Template("""
+        {% macro script(this, kwargs) %}
+        (function () {
+          var map = {{ this._parent.get_name() }};
+          var b = L.latLngBounds({{ this.sw|tojson }}, {{ this.ne|tojson }});
+          function ajuster() {
+            var c = map.getContainer();
+            if (c.clientWidth > 0 && c.clientHeight > 0) {
+              map.invalidateSize();
+              map.fitBounds(b, {maxZoom: {{ this.max_zoom }}, padding: [24, 24]});
+              return true;
+            }
+            return false;
+          }
+          var fait = ajuster();
+          window.addEventListener("resize", function () { if (!fait) { fait = ajuster(); } });
+        })();
+        {% endmacro %}
+    """)
+
+    def __init__(self, sw, ne, max_zoom: int = 15):
+        super().__init__()
+        self._name = "FitQuandVisible"
+        self.sw, self.ne, self.max_zoom = list(sw), list(ne), int(max_zoom)
+
+
+def fit_quand_visible(m: folium.Map, sw: tuple[float, float], ne: tuple[float, float],
+                      max_zoom: int = 15) -> None:
+    """Cadre la carte sur une emprise, y compris si elle naît dans un onglet caché.
+
+    Dans Streamlit, une carte placée dans un onglet non affiché est créée avec
+    une taille de 0 px : `fit_bounds` calcule alors un zoom « monde entier ».
+    Ici, le recadrage est rejoué dès que la carte devient visible (l'affichage
+    de l'onglet redimensionne son iframe).
+
+    Args:
+        m: carte Folium.
+        sw, ne: coins sud-ouest et nord-est (lat, lon).
+        max_zoom: zoom maximal (évite un zoom extrême sur un seul point).
+    """
+    m.add_child(_FitQuandVisible((float(sw[0]), float(sw[1])),
+                                 (float(ne[0]), float(ne[1])), max_zoom))

@@ -1,21 +1,23 @@
 # ============================================================================
 #  DÉPLOIEMENT (Streamlit Community Cloud) — dépendances LÉGÈRES du dashboard.
-#  Contraintes minimales (bornes basses seulement) pour que pip choisisse des
-#  versions récentes avec des « wheels » précompilés → installation fiable,
-#  y compris sur Python 3.13. Les données (parquet) sont embarquées dans le
-#  dépôt : pas besoin ici des libs lourdes (osmnx, rasterio, stac, xgboost…).
+#  Bornes = versions TESTÉES (v2.0, 20/10/2026 : streamlit 1.60→1.66, pandas
+#  2.x→3.0, numpy →2.5, geopandas 1.2). Les bornes hautes empêchent une
+#  nouvelle version majeure de casser l'app en ligne sans qu'on l'ait testée ;
+#  toutes ces versions ont des « wheels » précompilés (Python 3.13 compris).
+#  Les données (parquet) sont embarquées dans le dépôt : pas besoin ici des
+#  libs lourdes (osmnx, rasterio, stac, xgboost…).
 #  Reconstruire les données en local : pip install -r requirements-full.txt
 # ============================================================================
-streamlit>=1.37
-pandas>=2.1
-numpy>=1.26
-plotly>=5.20
-geopandas>=1.0
-shapely>=2.0
-pyarrow>=15
-folium>=0.17
-streamlit-folium>=0.22
-branca>=0.7
-reportlab>=4.2
-python-dotenv>=1.0
-loguru>=0.7
+streamlit>=1.60,<1.67
+pandas>=2.1,<3.1
+numpy>=1.26,<2.6
+plotly>=5.20,<8
+geopandas>=1.0,<1.3
+shapely>=2.0,<2.3
+pyarrow>=15,<27
+folium>=0.17,<0.21
+streamlit-folium>=0.22,<0.28
+branca>=0.7,<0.9
+reportlab>=4.2,<6
+python-dotenv>=1.0,<2
+loguru>=0.7,<0.8

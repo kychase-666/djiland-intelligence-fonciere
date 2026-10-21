@@ -70,7 +70,7 @@ def evaluate(zone: str, prix_m2_actuel: float, surface: float,
     prime_heat = float(np.clip((heat - 50) / 100 * 0.08, 0, 0.04))
     annual_future = min(annual + prime_transport + prime_heat, FUTURE_CAP)
 
-    annee0 = pd.Timestamp.utcnow().year
+    annee0 = pd.Timestamp.now(tz="UTC").year
     traj = []
     for y in HORIZONS:
         if y < 0:

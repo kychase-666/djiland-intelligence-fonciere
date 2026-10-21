@@ -9,7 +9,7 @@ transport & infrastructures futures, sécurité juridique + checklist documents.
 from __future__ import annotations
 
 import io
-from datetime import datetime
+from datetime import datetime, timezone
 
 from reportlab.graphics.charts.linecharts import HorizontalLineChart
 from reportlab.graphics.shapes import Drawing
@@ -76,29 +76,20 @@ def _kv(pairs, col1=8.5, col2=8.5):
 
 
 def _verdict(d: dict, dist_transport: float | None) -> tuple:
-    """Calcule le verdict global (libellé, couleur, justification)."""
-    statut = d.get("lotissement_statut")
-    if statut == "Annulé" or d.get("litige_parcelle"):
-        return ("À ÉVITER", ROUGE,
-                "Situation juridique rédhibitoire (lotissement annulé ou litige foncier).")
-    score = 0.0
-    score += min(d.get("rendement_locatif", 5) or 5, 11) / 11 * 30
-    score += (d.get("speculation_heat", 50) or 50) / 100 * 25
-    score += 20 if d.get("rattrapage") else 0
-    if dist_transport is not None and dist_transport < 5:
-        score += 15 * (1 - dist_transport / 5)
-    score += 10 if d.get("vue_lagune") else 0
-    score -= (d.get("malus_nuisance", 0) or 0) * 100 * 0.3
-    score -= (d.get("risque_inondation", 0) or 0) * 10
-    if statut == "En sursis":
-        score -= 10
-    if score >= 65:
-        return ("OPPORTUNITÉ FORTE", VERT_OK, "Fort potentiel de plus-value, risques maîtrisés.")
-    if score >= 45:
-        return ("INTÉRESSANT", VERT, "Bon équilibre rendement / potentiel / risque.")
-    if score >= 25:
-        return ("PRUDENCE", ORANGE, "Potentiel réel mais points de vigilance à lever.")
-    return ("FAIBLE INTÉRÊT", ROUGE, "Rendement/potentiel limités ou risques élevés.")
+    """Calcule le verdict global (libellé, couleur, justification).
+
+    Délègue à opportunites.score_ligne : même verdict que le Chasseur
+    d'opportunités du dashboard.
+    """
+    from src.analysis.opportunites import VERDICTS, score_ligne
+
+    score, cle = score_ligne(d, dist_transport)
+    libelle, _, justif = VERDICTS[cle]
+    couleur = {"evite": ROUGE, "forte": VERT_OK, "interessant": VERT,
+               "prudence": ORANGE, "faible": ROUGE}[cle]
+    if cle != "evite":
+        justif = f"{justif} Score d'opportunité : {score:.0f}/100."
+    return (libelle, couleur, justif)
 
 
 def _traj_chart(traj: list[dict]) -> Drawing:
@@ -172,7 +163,7 @@ def build_full_report(d: dict, output_path: str | None = None) -> bytes:
                                           fontSize=20)))
     story.append(Paragraph(
         f"Parcelle <b>{d.get('code_parcelle', '—')}</b> · {d.get('commune', '—')} · "
-        f"généré le {datetime.utcnow():%d/%m/%Y}",
+        f"généré le {datetime.now(timezone.utc):%d/%m/%Y}",
         ParagraphStyle("st", parent=_STYLES["Normal"], fontSize=10, alignment=TA_CENTER,
                        textColor=colors.HexColor("#666"))))
     story.append(Spacer(1, 0.35 * cm))

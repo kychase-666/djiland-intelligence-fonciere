@@ -15,7 +15,6 @@ import numpy as np
 import pandas as pd
 import plotly.express as px
 import streamlit as st
-import streamlit.components.v1 as components
 
 warnings.filterwarnings("ignore")
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,11 +22,18 @@ sys.path.insert(0, str(ROOT))
 
 from config import (  # noqa: E402
     ALL_ZONES,
+    APP_UPDATED,
+    APP_VERSION,
+    DATA_BUILT,
     GRAND_ABIDJAN_DIR,
     QUARTIERS,
     QUARTIERS_GENERIQUES,
 )
 from src.reports.pdf import build_report                       # noqa: E402
+
+# Version hébergée sur Streamlit Cloud (code monté dans /mount/src) : le disque
+# y est éphémère → les données saisies sont effacées à chaque mise en veille.
+EN_LIGNE = str(ROOT).startswith("/mount/src")
 
 st.set_page_config(page_title="Djiland · Grand Abidjan", layout="wide", page_icon="🛰️")
 
@@ -157,7 +163,7 @@ def load():
 def synth_history(_key: tuple, mois: int = 24) -> pd.DataFrame:
     """Historique mensuel de prix par commune (24 mois, reconstruit)."""
     rng = np.random.default_rng(7)
-    today = pd.Timestamp.utcnow().normalize()
+    today = pd.Timestamp.now(tz="UTC").normalize()
     rows = []
     for com, cfg in ALL_ZONES.items():
         for m in range(mois, -1, -1):
@@ -206,6 +212,8 @@ with st.expander("👋 Comment utiliser — guide rapide (2 min)"):
         "dans le Grand Abidjan.\n\n"
         "- 🗺️ **Carte** — les **zones colorées** montrent les prix (bleu = bon marché → rouge = cher). "
         "**Tapez une parcelle** pour voir tout son détail. Les traits animés = **futurs métro/autoroutes**.\n"
+        "- 🎯 **Opportunités** — entrez **votre budget** et vos critères → les **meilleurs terrains "
+        "à acheter**, classés et expliqués, avec leur rapport PDF en un clic.\n"
         "- 🧮 **Calculateur** — entrez une commune, un quartier et une surface → le **prix estimé**, "
         "et **combien ce terrain valait il y a 5 ans et vaudra dans 5 ans**.\n"
         "- ⚖️ **Sécurité juridique** — le lotissement est-il **approuvé** ? Quels documents exiger du vendeur ?\n"
@@ -231,9 +239,9 @@ st.markdown(
               f'<div class="k-value">{val}</div></div>' for lbl, val in _kpis)
     + "</div>", unsafe_allow_html=True)
 
-(tab_carte, tab_zone, tab_calc, tab_prix, tab_tend, tab_alertes, tab_jurid,
+(tab_carte, tab_opp, tab_zone, tab_calc, tab_prix, tab_tend, tab_alertes, tab_jurid,
  tab_annot, tab_pdf) = st.tabs(
-    ["🗺️ Carte", "💰 Analyse au m²", "🧮 Calculateur", "🏷️ Prix réels",
+    ["🗺️ Carte", "🎯 Opportunités", "💰 Analyse au m²", "🧮 Calculateur", "🏷️ Prix réels",
      "📈 Tendances", "🚨 Alertes", "⚖️ Sécurité juridique", "✏️ Annoter la carte",
      "📄 Rapport PDF"])
 
@@ -256,17 +264,17 @@ with tab_carte:
 
     @st.cache_data(show_spinner="Chargement de la carte…")
     def _lite_html(metric_col: str, _n: int) -> str:
-        return build_map_lite(metric_col)._repr_html_()
+        return build_map_lite(metric_col).get_root().render()
 
     @st.cache_data(show_spinner="Chargement de la carte complète…")
     def _full_html(metric_col: str, _n: int) -> str:
-        return build_map(metric_col)._repr_html_()
+        return build_map(metric_col).get_root().render()
 
     if mode_complet:
         if st.button("⏳ Charger la carte complète (lourde)"):
             st.session_state["load_full"] = True
         if st.session_state.get("load_full"):
-            components.html(_full_html(col, nonce), height=680, scrolling=False)
+            st.iframe(_full_html(col, nonce), height=680)
             st.info("🧰 Règle = mesure au m² · ✏️ crayon = dessiner · calques (haut-droite) = "
                     "satellite, relief, NIMBY, vue lagune, rendement, chantiers… · "
                     "tap sur une parcelle = détail complet.")
@@ -274,7 +282,7 @@ with tab_carte:
             st.info("👉 Cliquez « Charger la carte complète » — réservée à l'ordinateur "
                     "(toutes les couches, plus lourde).")
     else:
-        components.html(_lite_html(col, nonce), height=560, scrolling=False)
+        st.iframe(_lite_html(col, nonce), height=560)
         st.success("📱 **Carte allégée** (rapide sur téléphone) : zones colorées par prix, "
                    "parcelles à taper pour le détail, projets de transport futurs. "
                    "Bouton **calques** en haut à droite. Activez « Carte complète » sur ordinateur.")
@@ -303,6 +311,141 @@ with tab_carte:
                                    mime="application/vnd.google-earth.kml+xml")
 
 # ---------------------------------------------------------------------------
+# Onglet — Chasseur d'opportunités (budget → meilleurs terrains)
+# ---------------------------------------------------------------------------
+@st.cache_data(show_spinner="Calcul des scores d'opportunité…")
+def _parcelles_scorees():
+    """Parcelles + score d'opportunité / verdict / distance aux transports futurs."""
+    from src.analysis.opportunites import scorer
+    return scorer(load()[1])
+
+
+with tab_opp:
+    import folium
+
+    from src.analysis.ga_map import PLAN_CLAIR_ATTR, PLAN_CLAIR_TILES, fit_quand_visible
+    from src.analysis.opportunites import VERDICTS, rechercher
+    from src.ingestion.prix_reels import facteurs_recalage
+    from src.reports.pdf import build_full_report
+
+    st.subheader("🎯 Chasseur d'opportunités")
+    st.caption("Indiquez votre budget et vos critères : les terrains sont classés par **score "
+               "d'opportunité** (rendement, potentiel spéculatif, futurs transports, vue lagune, "
+               "moins les risques). Même verdict que dans le rapport PDF.")
+
+    sc = _parcelles_scorees()
+    f1, f2, f3 = st.columns(3)
+    budget_m = f1.number_input("💰 Budget maximum (en millions de FCFA)", min_value=1,
+                               max_value=2000, value=50, step=5,
+                               help="Ex. 50 = 50 000 000 FCFA")
+    budget = budget_m * 1_000_000
+    surf = f2.slider("📐 Surface (m²)", 100, 2000, (300, 1000), step=50)
+    rdt_min = f3.slider("📈 Rendement locatif minimum (%)", 0.0, 11.0, 0.0, 0.5)
+    zones_opp = st.multiselect("📍 Communes / zones", sorted(sc["commune"].unique()),
+                               placeholder="Toutes les zones (cliquez pour filtrer)")
+    o1, o2, o3, o4 = st.columns(4)
+    approuve = o1.checkbox("✅ Lotissement approuvé", value=True)
+    sans_lit = o2.checkbox("⚖️ Sans litige", value=True)
+    sans_nuis = o3.checkbox("🏭 Sans nuisance", value=False)
+    vue_lag = o4.checkbox("🌅 Vue lagune", value=False)
+
+    facteurs = facteurs_recalage(sc)
+    res = rechercher(sc, budget, surf[0], surf[1], zones_opp, approuve, sans_lit,
+                     sans_nuis, vue_lag, rdt_min, facteurs)
+    if facteurs:
+        st.success("✅ Prix recalés sur **vos observations réelles** pour : "
+                   + ", ".join(f"{c} ({v['n_obs']} obs.)" for c, v in facteurs.items()))
+
+    if res.empty:
+        st.warning("Aucun terrain ne correspond à ces critères. Augmentez le budget, "
+                   "élargissez la surface ou décochez un filtre.")
+    else:
+        top = res.head(30)
+        _k = [("Terrains trouvés", f"{len(res)}"),
+              ("Meilleur score", f"{top['score_opportunite'].iloc[0]:.0f}/100"),
+              ("✅ Intéressants ou mieux",
+               f"{int(res['verdict_cle'].isin(['forte', 'interessant']).sum())}"),
+              ("Prix médian trouvé", _sp(f"{res['prix_total_retenu'].median():,.0f} F"))]
+        st.markdown('<div class="dj-kpis">' + "".join(
+            f'<div class="dj-kpi"><div class="k-label">{a}</div><div class="k-value">{b}</div></div>'
+            for a, b in _k) + "</div>", unsafe_allow_html=True)
+
+        # Carte légère des 30 meilleurs (pastilles numérotées, couleur = verdict)
+        m_opp = folium.Map(location=[top.geometry.y.mean(), top.geometry.x.mean()],
+                           zoom_start=11, tiles=PLAN_CLAIR_TILES, attr=PLAN_CLAIR_ATTR, control_scale=True)
+        for rang, (_, r) in enumerate(top.iterrows(), start=1):
+            coul = VERDICTS[r["verdict_cle"]][1]
+            folium.Marker(
+                [r.geometry.y, r.geometry.x],
+                icon=folium.DivIcon(icon_size=(26, 26), icon_anchor=(13, 13), html=(
+                    f'<div style="background:{coul};width:26px;height:26px;border-radius:50%;'
+                    f'border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.45);color:#fff;'
+                    f'font:800 11px Inter,sans-serif;line-height:22px;text-align:center">{rang}</div>')),
+                tooltip=f"#{rang} · {r['commune']} · {r['score_opportunite']:.0f}/100",
+                popup=folium.Popup(
+                    f"<b>#{rang} · {r['code_parcelle']}</b><br><b>{r['verdict']}</b> "
+                    f"({r['score_opportunite']:.0f}/100)<br>{r['commune']} · "
+                    f"{r['surface_m2']:,.0f} m²<br>{r['prix_total_retenu']:,.0f} FCFA "
+                    f"({r['prix_m2_retenu']:,.0f} F/m²)<br>Rendement {r['rendement_locatif']} % · "
+                    f"transport futur à {r['dist_transport_km']} km", max_width=260),
+            ).add_to(m_opp)
+        fit_quand_visible(m_opp, (top.geometry.y.min(), top.geometry.x.min()),
+                          (top.geometry.y.max(), top.geometry.x.max()))
+        st.iframe(m_opp.get_root().render(), height=420)
+        st.caption("Pastilles numérotées = rang · 🟢 opportunité forte · 🟩 intéressant · "
+                   "🟠 prudence · ⚪ faible intérêt. Tapez une pastille pour le détail.")
+
+        tableau = top.assign(rang=range(1, len(top) + 1))[[
+            "rang", "verdict", "score_opportunite", "commune", "code_parcelle", "surface_m2",
+            "prix_m2_retenu", "prix_total_retenu", "rendement_locatif", "lotissement_statut",
+            "dist_transport_km", "accessibilite_min", "source_prix"]]
+        st.dataframe(
+            pd.DataFrame(tableau), width="stretch", hide_index=True,
+            column_config={
+                "rang": st.column_config.NumberColumn("#", width="small"),
+                "verdict": "Verdict",
+                "score_opportunite": st.column_config.ProgressColumn(
+                    "Score", min_value=0, max_value=100, format="%.0f"),
+                "commune": "Zone", "code_parcelle": "Parcelle",
+                "surface_m2": st.column_config.NumberColumn("Surface m²", format="localized"),
+                "prix_m2_retenu": st.column_config.NumberColumn("F/m²", format="localized"),
+                "prix_total_retenu": st.column_config.NumberColumn("Prix total (F)",
+                                                                   format="localized"),
+                "rendement_locatif": st.column_config.NumberColumn("Rendement %", format="%.1f"),
+                "lotissement_statut": "Lotissement (démo)",
+                "dist_transport_km": st.column_config.NumberColumn("Transport futur (km)",
+                                                                   format="%.1f"),
+                "accessibilite_min": st.column_config.NumberColumn("Accès Plateau (min)",
+                                                                   format="%.0f"),
+                "source_prix": "Source prix"})
+
+        export = pd.DataFrame(res.drop(columns="geometry")).assign(
+            lon=res.geometry.x.round(6), lat=res.geometry.y.round(6))
+        st.download_button("⬇️ Exporter tous les résultats (Excel / CSV)",
+                           data=export.to_csv(index=False).encode("utf-8-sig"),
+                           file_name="djiland_opportunites.csv", mime="text/csv")
+
+        st.markdown("#### 📄 Rapport PDF d'un terrain de la liste")
+        libelles = [f"#{i} · {r['code_parcelle']} · {r['commune']} · {r['verdict']}"
+                    for i, (_, r) in enumerate(top.iterrows(), start=1)]
+        idx = st.selectbox("Terrain", range(len(libelles)), format_func=lambda i: libelles[i],
+                           key="opp_choix")
+        if st.button("🖨️ Générer le rapport PDF de ce terrain", key="opp_pdf", type="primary"):
+            sel = top.iloc[idx]
+            row_opp = sel.drop(labels="geometry").to_dict()
+            row_opp.update(lon=float(sel.geometry.x), lat=float(sel.geometry.y),
+                           prix_m2_fcfa=float(sel["prix_m2_retenu"]),
+                           prix_total_fcfa=float(sel["prix_total_retenu"]))
+            with st.spinner("Génération du dossier…"):
+                pdf_opp = build_full_report(row_opp)
+            st.download_button("⬇️ Télécharger le rapport", data=pdf_opp,
+                               file_name=f"rapport_djiland_{sel['code_parcelle']}.pdf",
+                               mime="application/pdf", key="opp_dl")
+
+    st.caption("Classement indicatif : prix calibrés (sauf zones recalées sur vos prix réels) et "
+               "statuts juridiques de démonstration. À confirmer par visite, État Foncier et notaire.")
+
+# ---------------------------------------------------------------------------
 # Onglet 2 — Analyse au m² par zone
 # ---------------------------------------------------------------------------
 with tab_zone:
@@ -327,19 +470,19 @@ with tab_zone:
         st.plotly_chart(px.histogram(
             sub, x="prix_m2_fcfa", nbins=30, title=f"Distribution du prix au m² — {com}",
             labels={"prix_m2_fcfa": "FCFA/m²"}, color_discrete_sequence=["#1F6F5C"]),
-            use_container_width=True)
+            width="stretch")
     with g2:
         st.plotly_chart(px.scatter(
             sub, x="dist_plateau_km", y="prix_m2_fcfa", color="speculation_heat",
             color_continuous_scale="RdYlGn_r", title="Prix au m² vs distance au Plateau",
             labels={"dist_plateau_km": "Distance Plateau (km)", "prix_m2_fcfa": "FCFA/m²"}),
-            use_container_width=True)
+            width="stretch")
 
     st.markdown("**Parcelles les plus chaudes (précision m²)**")
     st.dataframe(sub.sort_values("speculation_heat", ascending=False)
                  [["code_parcelle", "prix_m2_fcfa", "surface_m2", "prix_total_fcfa",
                    "speculation_heat", "ndvi_moyen", "accessibilite_min", "viabilise"]]
-                 .head(15).reset_index(drop=True), use_container_width=True)
+                 .head(15).reset_index(drop=True), width="stretch")
 
 # ---------------------------------------------------------------------------
 # Onglet — Calculateur de prix
@@ -430,7 +573,7 @@ with tab_calc:
         fig.update_layout(height=340, title=f"Trajectoire de valeur — {surface:,.0f} m² à {zone}",
                           yaxis_title="Valeur totale (FCFA)", xaxis_title="Année",
                           margin=dict(t=50, b=10))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
         moteurs = f"taux passé ~{ev['taux_annuel_passe']}%/an → futur ~{ev['taux_annuel_futur']}%/an"
         if ev["prime_transport_pts"] > 0:
@@ -492,9 +635,12 @@ with tab_prix:
     st.caption("Colonnes : commune, quartier, type_bien, surface_m2, "
                "prix_total_fcfa (ou prix_m2_fcfa), date_obs, source")
     up = st.file_uploader("Fichier CSV", type=["csv"])
-    if up is not None:
+    # Garde-fou : un même fichier n'est importé qu'une fois (sinon chaque clic
+    # ailleurs dans la page ré-importait le fichier → doublons).
+    if up is not None and not st.session_state.get(f"prix_ok_{up.file_id}"):
         try:
             n = pr.import_csv(pd.read_csv(up))
+            st.session_state[f"prix_ok_{up.file_id}"] = True
             st.success(f"{n} ligne(s) importée(s).")
             st.cache_data.clear()
         except Exception as exc:
@@ -502,14 +648,44 @@ with tab_prix:
 
     st.markdown("#### 📊 Couverture par zone (réel)")
     if len(rz):
-        st.dataframe(rz, use_container_width=True, hide_index=True)
+        st.dataframe(rz, width="stretch", hide_index=True)
     else:
         st.info("Aucune donnée réelle pour l'instant. Commencez par saisir vos transactions "
                 "ci-dessus — c'est le début de votre avantage exclusif.")
 
     if len(obs):
         st.markdown("#### 🗂️ Dernières observations")
-        st.dataframe(obs.tail(20)[::-1], use_container_width=True, hide_index=True)
+        st.dataframe(obs.tail(20)[::-1], width="stretch", hide_index=True)
+
+    st.markdown("#### 💾 Sauvegarde & restauration de vos données")
+    if EN_LIGNE:
+        st.warning("**Version en ligne** : l'hébergement gratuit **efface les données saisies** "
+                   "(prix réels, notes de carte) à chaque mise en veille ou mise à jour. "
+                   "**Téléchargez une sauvegarde** après chaque saisie, et restaurez-la au besoin.")
+    else:
+        st.caption("Gardez une copie de vos données : utile pour les transférer vers la version "
+                   "en ligne ou les archiver.")
+    from src.analysis import notes as notes_bk
+
+    b1, b2 = st.columns(2)
+    b1.download_button("⬇️ Sauvegarder mes prix réels (CSV)", data=pr.export_csv(),
+                       file_name="djiland_prix_reels.csv", mime="text/csv",
+                       disabled=not len(obs), width="stretch")
+    b2.download_button("⬇️ Sauvegarder mes notes de carte (CSV)",
+                       data=notes_bk.export_notes_csv(), file_name="djiland_notes_carte.csv",
+                       mime="text/csv", disabled=notes_bk.load_notes().empty, width="stretch")
+    st.caption("Restaurer les prix réels : utilisez l'**Import CSV** ci-dessus avec votre fichier "
+               "de sauvegarde.")
+    up_notes = st.file_uploader("Restaurer des notes de carte (fichier de sauvegarde CSV)",
+                                type=["csv"], key="restore_notes")
+    if up_notes is not None and not st.session_state.get(f"notes_ok_{up_notes.file_id}"):
+        try:
+            n_notes = notes_bk.import_notes_csv(pd.read_csv(up_notes))
+            st.session_state[f"notes_ok_{up_notes.file_id}"] = True
+            st.success(f"{n_notes} note(s) restaurée(s) — visibles sur la carte.")
+            st.cache_data.clear()
+        except Exception as exc:
+            st.error(f"Restauration impossible : {exc}")
 
 # ---------------------------------------------------------------------------
 # Onglet 3 — Tendances
@@ -525,7 +701,7 @@ with tab_tend:
         st.plotly_chart(px.line(
             serie, x="mois", y="prix_m2_fcfa", color="commune", markers=True,
             labels={"prix_m2_fcfa": "FCFA/m²", "mois": "Mois"},
-            title="Évolution du prix au m² par commune (24 mois)"), use_container_width=True)
+            title="Évolution du prix au m² par commune (24 mois)"), width="stretch")
 
 # ---------------------------------------------------------------------------
 # Onglet 4 — Alertes spéculatives
@@ -585,9 +761,9 @@ with tab_jurid:
                              {"range": [40, 70], "color": "#fef3d6"},
                              {"range": [70, 100], "color": "#dcfce7"}]}))
         fig.update_layout(height=240, margin=dict(t=50, b=10, l=20, r=20))
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
-    st.dataframe(pd.DataFrame(jz.score_details(row)), use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(jz.score_details(row)), width="stretch", hide_index=True)
 
     d1, d2 = st.columns(2)
     with d1:
@@ -690,3 +866,15 @@ with tab_pdf:
         st.download_button("⬇️ Télécharger le rapport PDF", data=pdf,
                            file_name=f"rapport_djiland_{code}.pdf", mime="application/pdf")
         st.success("Rapport généré ✅")
+
+# ---------------------------------------------------------------------------
+# Pied de page — version & fraîcheur des données
+# ---------------------------------------------------------------------------
+_fr = lambda iso: pd.Timestamp(iso).strftime("%d/%m/%Y")  # noqa: E731
+st.markdown(
+    f'<div style="margin-top:28px;padding:12px 4px;border-top:1px solid #e6e4dc;'
+    f'color:#6b7a73;font-size:12px;line-height:1.6;text-align:center">'
+    f'<b>Djiland · Intelligence Foncière</b> — version {APP_VERSION} · mise à jour du '
+    f'{_fr(APP_UPDATED)} · couches OSM & parcelles du {_fr(DATA_BUILT)}<br>'
+    f'Estimations indicatives (prix calibrés, statuts juridiques de démonstration) — '
+    f'à confirmer par visite, État Foncier et notaire.</div>', unsafe_allow_html=True)

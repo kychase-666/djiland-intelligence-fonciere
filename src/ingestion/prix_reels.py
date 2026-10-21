@@ -14,7 +14,7 @@ réelles, le système utilise le PRIX RÉEL au lieu du prix calibré.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import pandas as pd
 from loguru import logger
@@ -48,7 +48,7 @@ def _finalize(obs: dict) -> dict:
     if not obs.get("prix_m2_fcfa") and obs.get("prix_total_fcfa") and obs.get("surface_m2"):
         obs["prix_m2_fcfa"] = round(obs["prix_total_fcfa"] / obs["surface_m2"], 0)
     if not obs.get("date_obs"):
-        obs["date_obs"] = datetime.utcnow().strftime("%Y-%m-%d")
+        obs["date_obs"] = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     return obs
 
 
@@ -71,7 +71,7 @@ def import_csv(df_in: pd.DataFrame) -> int:
     Returns:
         Nombre de lignes importées valides.
     """
-    df_in = df_in.rename(columns={c: c.strip().lower() for c in df_in.columns})
+    df_in = df_in.rename(columns={c: str(c).lstrip("\ufeff").strip().lower() for c in df_in.columns})
     rows = []
     for _, r in df_in.iterrows():
         obs = _finalize({
@@ -134,3 +134,35 @@ def prix_reference(commune: str, prix_calibre: float | None = None) -> dict:
     calibre = prix_calibre if prix_calibre is not None else ALL_ZONES.get(
         commune, {}).get("prix_m2", 0)
     return {"valeur": float(calibre), "source": "calibré", "n_obs": n}
+
+
+def facteurs_recalage(parcelles: pd.DataFrame) -> dict[str, dict]:
+    """Facteurs de recalage des prix calibrés par les prix RÉELS saisis.
+
+    Pour chaque commune ayant au moins SEUIL_REEL observations réelles :
+    facteur = médiane réelle / médiane calibrée des parcelles de la commune.
+    Le Chasseur d'opportunités applique ce facteur à toutes les parcelles de
+    la commune : vos transactions corrigent automatiquement les estimations.
+
+    Returns:
+        {commune: {"facteur": float, "n_obs": int, "median_reel": float}}.
+    """
+    df = load_prix_reels()
+    if df.empty:
+        return {}
+    out = {}
+    for commune, g in df.groupby("commune"):
+        sub = parcelles[parcelles["commune"] == commune]
+        if len(g) < SEUIL_REEL or sub.empty:
+            continue
+        med_reel = float(g["prix_m2_fcfa"].median())
+        med_cal = float(sub["prix_m2_fcfa"].median())
+        if med_cal > 0:
+            out[commune] = {"facteur": round(med_reel / med_cal, 4),
+                            "n_obs": int(len(g)), "median_reel": med_reel}
+    return out
+
+
+def export_csv() -> bytes:
+    """Sauvegarde de toute la base de prix réels en CSV (lisible dans Excel)."""
+    return load_prix_reels().to_csv(index=False).encode("utf-8-sig")

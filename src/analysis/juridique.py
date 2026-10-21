@@ -200,13 +200,13 @@ def guichet_competent(commune: str) -> dict:
 
 def alertes_juridiques(parcelles: gpd.GeoDataFrame, n: int = 6) -> list[dict]:
     """Flux d'alertes de changement de statut (DÉMO, format réaliste)."""
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
 
     risquees = parcelles[parcelles["lotissement_statut"].isin(["En sursis", "Annulé"])]
     if risquees.empty:
         return []
     ech = risquees.sample(n=min(n, len(risquees)), random_state=3)
-    today = datetime.utcnow()
+    today = datetime.now(timezone.utc)
     out = []
     for _, r in ech.iterrows():
         st = r["lotissement_statut"]

@@ -42,6 +42,26 @@ docker compose up --build
 
 ---
 
+## 🆕 Nouveautés v2.0 (20/10/2026)
+
+- **🎯 Chasseur d'opportunités** : budget + critères (surface, zones, lotissement
+  approuvé, sans litige, sans nuisance, vue lagune, rendement minimum) → terrains
+  classés par score d'opportunité, carte numérotée, export CSV, rapport PDF en 1 clic.
+  Même verdict que le PDF (`src/analysis/opportunites.py` = source unique).
+- **Prix réels → recalage automatique** : dès 3 observations réelles dans une zone,
+  les estimations de cette zone sont recalées sur vos prix.
+- **Sauvegarde / restauration** des prix réels et des notes de carte (CSV) — la
+  version en ligne gratuite efface les données saisies à chaque mise en veille.
+- **Correctifs** : fond de carte CARTO (devenu payant, « API KEY REQUIRED ») remplacé
+  par Esri Light Gray gratuit ; carte qui ne remplissait que 60 % de son cadre
+  (minuscule sur téléphone) ; carte des résultats cadrée « monde entier » dans un
+  onglet caché ; import CSV qui se ré-exécutait à chaque clic (doublons).
+- **Pérennité** : API Streamlit modernisées (`st.iframe`, `width="stretch"`),
+  versions des dépendances figées sur les versions testées (Streamlit ≤ 1.66,
+  pandas ≤ 3.0) pour que la version en ligne ne casse pas à la prochaine mise à jour.
+
+---
+
 ## 🧭 Ce que fait le système (les 6 phases)
 
 | Phase | Rôle | Fichiers clés |

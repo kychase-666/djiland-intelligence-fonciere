@@ -7,11 +7,12 @@ ouverture du dashboard (mémoire de terrain de l'équipe Djiland).
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 import geopandas as gpd
 import pandas as pd
 from loguru import logger
+from shapely import wkt
 from shapely.geometry import shape
 
 from config import CRS_DISPLAY, GRAND_ABIDJAN_DIR
@@ -52,7 +53,7 @@ def save_note(drawing_geojson: dict, note: str, categorie: str, auteur: str) -> 
     gdf = load_notes()
     new = gpd.GeoDataFrame(
         [{"note": note, "categorie": categorie, "auteur": auteur,
-          "date": datetime.utcnow().strftime("%Y-%m-%d %H:%M"), "geometry": geom}],
+          "date": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M"), "geometry": geom}],
         crs=CRS_DISPLAY)
     out = pd.concat([gdf, new], ignore_index=True)
     gpd.GeoDataFrame(out, geometry="geometry", crs=CRS_DISPLAY).to_parquet(NOTES_PATH)
@@ -73,3 +74,37 @@ def clear_notes() -> None:
     if NOTES_PATH.exists():
         NOTES_PATH.unlink()
         logger.info("[NOTES] Toutes les annotations effacées.")
+
+
+def export_notes_csv() -> bytes:
+    """Sauvegarde des annotations en CSV (géométrie au format texte WKT)."""
+    gdf = load_notes()
+    df = pd.DataFrame(gdf.drop(columns="geometry"))
+    df["geometrie_wkt"] = [g.wkt if g is not None else "" for g in gdf.geometry]
+    return df.to_csv(index=False).encode("utf-8-sig")
+
+
+def import_notes_csv(df_in: pd.DataFrame) -> int:
+    """Restaure des annotations depuis une sauvegarde CSV (export_notes_csv).
+
+    Les annotations restaurées s'AJOUTENT à celles déjà présentes.
+
+    Returns:
+        Nombre d'annotations valides importées.
+    """
+    df_in = df_in.rename(columns={c: str(c).lstrip("﻿").strip() for c in df_in.columns})
+    rows = []
+    for _, r in df_in.iterrows():
+        try:
+            geom = wkt.loads(str(r.get("geometrie_wkt", "")))
+        except Exception:
+            continue
+        rows.append({"note": r.get("note", ""), "categorie": r.get("categorie", "Autre"),
+                     "auteur": r.get("auteur", ""), "date": str(r.get("date", "")),
+                     "geometry": geom})
+    if rows:
+        new = gpd.GeoDataFrame(rows, geometry="geometry", crs=CRS_DISPLAY)
+        out = pd.concat([load_notes(), new], ignore_index=True)
+        gpd.GeoDataFrame(out, geometry="geometry", crs=CRS_DISPLAY).to_parquet(NOTES_PATH)
+    logger.success(f"[NOTES] {len(rows)} annotation(s) restaurée(s).")
+    return len(rows)
