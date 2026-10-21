@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="236" height="44" viewBox="0 0 236 44" role="img" aria-label="Djiland Land Intelligence">
+  <rect x="2" y="4" width="36" height="36" rx="9" fill="#0B5D4B"/>
+  <rect x="9" y="11" width="10" height="10" rx="1.6" fill="#E3EEEA" opacity="0.92"/>
+  <rect x="21" y="11" width="10" height="10" rx="1.6" fill="#E3EEEA" opacity="0.55"/>
+  <rect x="9" y="23" width="10" height="10" rx="1.6" fill="#E3EEEA" opacity="0.55"/>
+  <rect x="21" y="23" width="10" height="10" rx="1.6" fill="#C9A24E"/>
+  <text x="50" y="25" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="19" font-weight="800" letter-spacing="2.4" fill="#F2F7F5">DJILAND</text>
+  <text x="51" y="38" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="8.6" font-weight="600" letter-spacing="2.6" fill="#C9A24E">LAND INTELLIGENCE</text>
+</svg>

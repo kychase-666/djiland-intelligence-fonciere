@@ -1,11 +1,38 @@
-# Thème professionnel épuré — Djiland Land Intelligence
+# ============================================================================
+#  Djiland · Land Intelligence — charte graphique (thème natif Streamlit)
+#  Style « cabinet international de conseil immobilier » : neutres sobres,
+#  émeraude profond (foncier, croissance) + or (premium), barre latérale sombre.
+# ============================================================================
 [theme]
 base = "light"
-primaryColor = "#1F6F5C"                 # émeraude sobre (foncier / croissance)
-backgroundColor = "#FBFBF9"              # blanc cassé chaud
-secondaryBackgroundColor = "#F1F0EB"     # panneaux / cartes
-textColor = "#16241F"                    # vert-anthracite lisible
-font = "sans serif"
+primaryColor = "#0B5D4B"                 # émeraude profond — actions, liens
+backgroundColor = "#F5F7F8"              # fond de page neutre
+secondaryBackgroundColor = "#FFFFFF"     # widgets / cartes
+textColor = "#14211D"                    # encre vert-anthracite
+linkColor = "#0B5D4B"
+borderColor = "#E2E7EA"
+showWidgetBorder = true
+baseRadius = "0.55rem"
+buttonRadius = "0.5rem"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+headingFont = "Plus Jakarta Sans:https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+headingFontSizes = ["1.95rem", "1.45rem", "1.15rem", "1rem", "0.92rem", "0.85rem"]
+headingFontWeights = [800, 700, 700, 600, 600, 600]
+metricValueFontSize = "1.6rem"
+dataframeHeaderBackgroundColor = "#EEF3F1"
+chartCategoricalColors = ["#0B5D4B", "#B8893B", "#2F6FA8", "#C2553D", "#6B8F3A",
+                          "#7A5BA8", "#3E9C8F", "#8A8F98"]
+showSidebarBorder = false
+
+[theme.sidebar]
+backgroundColor = "#0C1F1B"              # barre latérale sombre (signature)
+secondaryBackgroundColor = "#15322B"
+textColor = "#E3EEEA"
+primaryColor = "#3FBF9A"
+borderColor = "#1F3D35"
+
+[client]
+toolbarMode = "minimal"                  # masque les menus développeur
 
 [server]
 headless = true
